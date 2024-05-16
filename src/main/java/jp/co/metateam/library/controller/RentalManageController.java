@@ -1,4 +1,6 @@
 package jp.co.metateam.library.controller;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -18,11 +20,12 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import jakarta.validation.Valid;
 import jp.co.metateam.library.model.RentalManageDto;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+
 import jp.co.metateam.library.values.RentalStatus;
 import jp.co.metateam.library.model.Stock;
-import jp.co.metateam.library.model.StockDto;
 import jp.co.metateam.library.model.Account;
-import jp.co.metateam.library.model.AccountDto;
+import java.util.Date;
  
  
 /**
@@ -104,5 +107,77 @@ public class RentalManageController {
         }
     }
  
+   
+    @GetMapping("/rental/{id}/edit")
+    public String edit(@PathVariable("id") Long id, Model model) {
+        List <Stock> stockList = this.stockService.findAll();  //在庫管理番号のプルダウンリスト作成
+        List <Account> accounts = this.accountService.findAll(); //社員番号のプルダウンリスト作成
+     
+            model.addAttribute("stockList", stockList); //在庫管理番号のリストを表示（プルダウン）
+            model.addAttribute("accounts", accounts);  //社員番号のリストを表示（プルダウン）
+            model.addAttribute("rentalStatus", RentalStatus.values());  //貸出ステータスリスト（プルダウン）
+     
+            RentalManage rentalManage = this.rentalManageService.findById(id); //貸出管理テーブルから{id}の情報を持ってくる
+     
+            /*
+             * 取得した貸出管理情報をそれぞれセットする
+             */
+            if (!model.containsAttribute("rentalManageDto")) {
+                RentalManageDto rentalManageDto = new RentalManageDto();
+     
+            rentalManageDto.setId(rentalManage.getId());
+            rentalManageDto.setStatus(rentalManage.getStatus());
+            rentalManageDto.setExpectedRentalOn(rentalManage.getExpectedRentalOn());
+            rentalManageDto.setExpectedReturnOn(rentalManage.getExpectedReturnOn());
+            rentalManageDto.setStockId(rentalManage.getStock().getId());
+            rentalManageDto.setEmployeeId(rentalManage.getAccount().getEmployeeId());
+     
+            /*
+             * セットした内容の表示
+             */
+            model.addAttribute("rentalManageDto", rentalManageDto);
+        }
+     
+        return "rental/edit";
+     }
+
+     @PostMapping("/rental/{id}/edit")
+    public String update(@PathVariable("id") String id, @Valid @ModelAttribute RentalManageDto rentalManageDto, BindingResult result, Model model){
  
+        Integer afterStatus = rentalManageDto.getStatus();
+        Date afterexpectedRentalOn = rentalManageDto.getExpectedRentalOn();
+       // Date afterexpectedRentalOn = rentalManageDto.getExpectedRentalOn();
+        LocalDate newexpectedRentalOn = afterexpectedRentalOn.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+         //今日の日付の取得
+        LocalDate currentDate = LocalDate.now();
+       
+       
+         try {
+              RentalManage rentalManage = this.rentalManageService.findById(Long.valueOf(id));
+              String validerror = rentalManageService.isStatusError(rentalManage.getStatus(), afterStatus, newexpectedRentalOn, currentDate);
+ 
+           
+             if (validerror != null) {
+                result.addError(new FieldError("rentalManageDto","status",validerror));                
+            }
+             
+             if (result.hasErrors()) {
+                 throw new Exception("Validation error.");                
+             }
+             // 更新処理
+             this.rentalManageService.update(Long.valueOf(id), rentalManageDto);
+ 
+             return "redirect:/rental/index";
+         } catch (Exception e) {
+            log.error(e.getMessage());
+            List <Stock> stockList = this.stockService.findAll();  //在庫管理番号のプルダウンリスト作成
+            List <Account> accounts = this.accountService.findAll(); //社員番号のプルダウンリスト作成
+       
+                model.addAttribute("stockList", stockList); //在庫管理番号のリストを表示（プルダウン）
+                model.addAttribute("accounts", accounts);  //社員番号のリストを表示（プルダウン）
+                model.addAttribute("rentalStatus", RentalStatus.values());  //貸出ステータスリスト（プルダウン）
+       
+            return "rental/edit";//どのテンプレートをもってくるか
+        }
+     }
 }
